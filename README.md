@@ -1,136 +1,54 @@
-# heladeria-demo: pipeline DevSecOps con IA
+<!-- readme-proyecto -->
+# heladeria-demo
 
 > Proyecto generado automáticamente desde la plantilla [JCG097/ai-sdlc-quality-pipeline-demo](https://github.com/JCG097/ai-sdlc-quality-pipeline-demo) el 29 de septiembre de 2026, con el autoservicio de proyectos.
 
-Demo de un ciclo de vida de software asistido por IA: una historia de usuario entra como Issue, la IA crea las pruebas y el código, y un pipeline DevSecOps valida cada cambio con quality gates antes de desplegarlo en ambientes efímeros de DEV y QA. Si algo falla, la IA recibe el reporte, corrige y el ciclo se repite.
+Este producto se construye **historia a historia**: cada historia de usuario la desarrolla la IA con TDD y la valida un pipeline DevSecOps con 10 quality gates antes de desplegarla en ambientes efímeros de DEV y QA. Ningún cambio llega a `main` sin pasar por un PR con todos los gates en verde.
 
-Es una **plantilla**: cada proyecto nace con una app vacía (un servidor con un endpoint de salud y una página de bienvenida) y con todo el pipeline, los controles y la IA listos. El producto se construye historia a historia, sea una heladería, una lista de tareas o cualquier otro.
+## Enviar una historia de usuario
 
-## Flujo end-to-end
+1. Ve a **Issues → New issue → Historia de usuario**.
+2. Escribe la historia ("Como … quiero … para …") y sus criterios de aceptación, uno por línea y con valores concretos.
+3. Crea el Issue. La etiqueta `claude-dev` se asigna sola y arranca el flujo.
 
-```mermaid
-flowchart LR
-  HU[Issue con historia<br/>y criterios] --> QA[IA QA<br/>pruebas de aceptación y E2E]
-  QA --> DV[IA Desarrollo<br/>TDD]
-  DV --> PR[Pull Request]
-  PR --> CI[CI: 7 quality gates]
-  CI --> BLD[Build, escaneo<br/>SBOM y registro]
-  BLD --> DEV[DEV efímero<br/>smoke]
-  DEV --> QAE[QA efímero<br/>E2E]
-  QAE --> OK[Merge habilitado]
-  CI -. falla .-> FB[Reporte en el PR<br/>y alerta al chat]
-  BLD -. falla .-> FB
-  DEV -. falla .-> FB
-  QAE -. falla .-> FB
-  FB --> RT{Intento<br/>menor a 3}
-  RT -- sí --> DV
-  RT -- no --> ESC[Issue para<br/>revisión humana]
-```
+Cuanto más concretos sean los criterios (valores, mensajes y códigos de respuesta esperados), menos margen de interpretación tiene la IA.
 
-1. **Historia de usuario:** un Issue con la historia y sus criterios de aceptación. La etiqueta `claude-dev` inicia el proceso.
-2. **IA QA:** crea las pruebas de aceptación (API) y, si aplica, E2E (interfaz) a partir de los criterios, sin ver la implementación.
-3. **IA Desarrollo:** implementa con TDD para que pasen esas pruebas y abre el PR.
-4. **CI:** siete quality gates de calidad y seguridad. El ruleset de `main` bloquea el merge si alguno falla.
-5. **Build y CD:** la imagen se construye una sola vez, se escanea, se publica y se promueve a DEV y luego a QA.
-6. **Retroalimentación:** ante un fallo, el reporte llega al PR y al chat del equipo; la IA corrige hasta 3 veces antes de escalar a una persona.
+## Qué pasa después
 
-## Workflows y triggers
+1. **IA QA** crea las pruebas de aceptación (y E2E si hay interfaz) a partir de los criterios, en la rama `claude/issue-N`.
+2. **IA Desarrollo** implementa con TDD para que esas pruebas pasen y abre el PR.
+3. **El pipeline** ejecuta los 10 quality gates, construye la imagen y la despliega en DEV y QA.
+4. **Si un gate falla**, el reporte llega al PR y al chat del equipo, y la IA corrige hasta 3 veces antes de pedir revisión humana.
+5. **Una persona revisa el PR y hace merge.** El Issue se cierra automáticamente.
 
-| Workflow | Se dispara cuando | Insumos | Resultado |
-| --- | --- | --- | --- |
-| `claude-dev.yml` | Un Issue recibe la etiqueta `claude-dev` | Título, historia y criterios del Issue; reglas de `CLAUDE.md` | Rama `claude/issue-N` con commits `qa`, `test` y `feat`, y un PR |
-| `quality-pipeline.yml` | Se abre o actualiza un PR, o hay un push a `main` | Código del PR y configuración de cada gate | Gates, imagen publicada y despliegues en DEV y QA |
-| `claude-fix.yml` | El Quality Pipeline falla en un PR de la IA | Gates fallidos y log del error | Reporte en el PR y corrección de la IA (máximo 3 intentos) |
-| `notificaciones.yml` | Termina el Quality Pipeline | Resultado del run | Mensaje al chat del equipo |
+Todo el avance se ve en [Actions](https://github.com/JCG097/heladeria-demo/actions), y las alertas llegan al espacio de Google Chat del equipo.
 
 ## Quality gates
 
-| Stage | Gate | Herramienta | Bloquea si |
-| --- | --- | --- | --- |
-| CI | TDD verificado | `scripts/check-tdd.js` | Hay cambios en `app/` sin cambios en pruebas |
-| CI | Integridad de pruebas de aceptación | `scripts/check-acceptance-integrity.js` | Un commit que no es de QA modifica `tests/acceptance/` o `tests/e2e/` |
-| CI | Secretos en el código | Gitleaks | Se detecta una clave, token o contraseña |
-| CI | Análisis estático | ESLint | Hay errores de lint |
-| CI | Pruebas unitarias y de aceptación | Jest | Falla alguna prueba o la cobertura es menor al 80 % |
-| CI | Dependencias vulnerables (SCA) | OSV-Scanner | Hay vulnerabilidades conocidas |
-| CI | Calidad y seguridad del código (SAST) | SonarQube Cloud | No se aprueba el Quality Gate (bloqueante en PRs) |
-| Build | Seguridad de la imagen | Trivy | Hay vulnerabilidades altas o críticas con solución disponible |
-| DEV | Smoke | curl | La app no responde o no carga |
-| QA | E2E de aceptación | Playwright | Algún criterio de aceptación no se cumple |
-
-Todos son obligatorios en el ruleset **Proteger main**: todo cambio entra por PR y nadie puede saltarse los gates, ni siquiera el dueño del repositorio.
-
-## Artefactos
-
-La imagen se construye **una sola vez por commit** y ese mismo artefacto se promueve de DEV a QA. El SHA del commit identifica la imagen de punta a punta.
-
-| Stage | Artefacto | Dónde se consulta |
+| Stage | Gate | Herramienta |
 | --- | --- | --- |
-| CI | Reporte de cobertura | Artefacto `coverage` del run |
-| CI | Resultados de Gitleaks y OSV-Scanner | Artefactos SARIF del run y pestaña Security |
-| CI | Análisis y Quality Gate | SonarQube Cloud y comentario en el PR |
-| Build | Imagen `ghcr.io/<owner>/<repo>:<sha>` | Packages del repositorio |
-| Build | Escaneo de Trivy y SBOM (CycloneDX) | Artefacto `imagen-reportes` del run |
-| DEV y QA | Registro de despliegues | Environments `dev` y `qa` |
-| QA | Reporte HTML de Playwright | Artefacto `playwright-report` del run |
+| CI | TDD verificado | `scripts/check-tdd.js` |
+| CI | Integridad de pruebas de aceptación | `scripts/check-acceptance-integrity.js` |
+| CI | Secretos en el código | Gitleaks |
+| CI | Análisis estático | ESLint |
+| CI | Pruebas unitarias y de aceptación (cobertura mínima 80 %) | Jest |
+| CI | Dependencias vulnerables | OSV-Scanner |
+| CI | Calidad y seguridad del código | SonarQube Cloud |
+| Build | Seguridad de la imagen | Trivy |
+| DEV | Smoke | curl |
+| QA | E2E de aceptación | Playwright |
 
-## IA en el pipeline
+## Enlaces del proyecto
 
-La IA trabaja en tres procesos separados, cada uno con permisos limitados por carpeta. Los controles son técnicos, no solo instrucciones.
-
-| Proceso | Qué hace | Puede modificar |
-| --- | --- | --- |
-| QA | Crea pruebas de aceptación y E2E desde los criterios; commit `qa(#N)` | `tests/acceptance/` y `tests/e2e/` |
-| Desarrollo | Implementa con TDD; commits `test(#N)` y `feat(#N)`; abre el PR | `app/` y `tests/unit/` |
-| Corrección | Lee el reporte del gate fallido y corrige la causa raíz | `app/` y `tests/unit/` |
-
-**Controles:** lista cerrada de comandos permitidos, gate de integridad sobre las pruebas de QA, reglas por rol en `CLAUDE.md` (nunca bajar umbrales, borrar pruebas ni modificar workflows), máximo 3 intentos de corrección, límite de pasos y de tiempo por ejecución, y límite de gasto en la API.
-
-## Notificaciones
-
-| Evento | Mensaje |
+| Recurso | Enlace |
 | --- | --- |
-| Pipeline aprobado | ✅ Título, rama, validación en DEV y QA, imagen y enlace al run |
-| Quality gate fallido | ❌ Título, rama, gates fallidos y enlace al run |
-| La IA está corrigiendo | 🤖 PR, número de intento y gates fallidos |
-| Revisión humana requerida | 🚨 PR y gates fallidos tras agotar los intentos |
+| Pipeline y ejecuciones | https://github.com/JCG097/heladeria-demo/actions |
+| Imágenes publicadas | https://github.com/JCG097/heladeria-demo/pkgs/container/heladeria-demo |
+| Despliegues en DEV y QA | https://github.com/JCG097/heladeria-demo/deployments |
+| Calidad del código | https://sonarcloud.io/project/overview?id=JCG097_heladeria-demo |
+| Alertas de seguridad | https://github.com/JCG097/heladeria-demo/security |
 
-Los mensajes se envían a un webhook de Google Chat (`CHAT_WEBHOOK_URL`). El mismo mecanismo funciona con cualquier canal que acepte webhooks, como Slack o Teams.
-
-## Crear un proyecto nuevo
-
-### Con un clic (autoservicio)
-
-En este repositorio: **Actions → Crear proyecto → Run workflow**.
-
-- **Nombre del proyecto:** minúsculas, números y guiones, por ejemplo `heladeria`.
-- **Historia inicial:** una historia de `historias/` para que la IA empiece a construir el producto, o `ninguna`.
-
-El workflow crea el repositorio desde esta plantilla, configura sus secretos, etiquetas y ambientes `dev` y `qa`, crea el proyecto en SonarQube Cloud (con el análisis automático desactivado), personaliza el README y la página inicial con el nombre del proyecto, crea el ruleset con los 10 gates obligatorios y, si se eligió, envía la historia inicial a la IA. Tarda uno o dos minutos y deja un resumen con los enlaces. Es reanudable: si falla, se ejecuta otra vez con el mismo nombre y continúa.
-
-**Requisitos (una sola vez):** el secreto `PLATFORM_TOKEN` en este repositorio (token personal con permisos para crear y administrar repositorios) y las GitHub Apps de Claude y SonarQube Cloud con acceso a todos los repositorios. Los secretos del proyecto nuevo se copian de los de esta plantilla; nadie tiene que escribirlos.
-
-Para ofrecer más historias iniciales, agrega un archivo en `historias/` (primera línea `# Título`, luego la historia y sus criterios) y súmalo a las opciones de `.github/workflows/crear-proyecto.yml`.
-
-### Desde la consola
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\nuevo-proyecto.ps1 -Nombre mi-proyecto
-```
-
-Hace lo mismo que el botón desde tu computador, con tu sesión de GitHub CLI; los secretos se leen de variables de entorno o se piden de forma oculta.
-
-## Uso
-
-### Desarrollar una historia con IA
-
-1. En el repositorio del proyecto: **Issues → New issue → Historia de usuario**.
-2. Completa la historia y sus criterios de aceptación (uno por línea, con valores concretos) y crea el Issue. La etiqueta `claude-dev` se asigna sola y arranca el flujo.
-3. Sigue el avance en **Actions → Claude Dev**: primero el job de QA y luego el de Desarrollo.
-4. Revisa el PR que abre la IA: commits separados por fase, criterios cubiertos y resultado de los gates.
-5. Con todos los gates en verde, haz merge. El Issue se cierra automáticamente.
-
-### Ejecutar la app en local
+## Trabajar en local
 
 ```powershell
 npm install
@@ -140,26 +58,11 @@ npm run test:coverage
 npm run test:e2e   # requiere la app corriendo en http://localhost:3000
 ```
 
-## Configuración
+## Reglas y configuración
 
-| Elemento | Dónde |
-| --- | --- |
-| Reglas de la IA por rol | `CLAUDE.md` |
-| Umbrales de los gates | `jest.config.js`, `eslint.config.js`, `sonar-project.properties` |
-| Excepciones de Gitleaks (revisadas y justificadas) | `.gitleaks.toml` |
-| Pruebas E2E | `playwright.config.js` y `tests/e2e/` |
-| Imagen de la app | `Dockerfile` (multietapa, sin npm, usuario sin privilegios) |
-| Secretos | `ANTHROPIC_API_KEY`, `SONAR_TOKEN` y `CHAT_WEBHOOK_URL` en GitHub Actions |
-| Protección de `main` | Ruleset **Proteger main** |
+- **Reglas de la IA por rol:** `CLAUDE.md`.
+- **Umbrales de los gates:** `jest.config.js`, `eslint.config.js` y `sonar-project.properties`.
+- **Excepciones de seguridad revisadas:** `.gitleaks.toml`.
+- **Protección de `main`:** ruleset **Proteger main**, con los 10 gates obligatorios.
 
-## Decisiones de diseño
-
-- **La imagen se construye una vez y se promueve.** Lo que se prueba en QA es exactamente lo que pasó los gates.
-- **El Quality Gate de SonarQube bloquea en los PRs.** En `main` el análisis actualiza la línea base sin bloquear, porque todo lo que llega a `main` ya pasó por el gate en su PR. Esto también permite que un proyecto nuevo pase su primer pipeline, cuando SonarQube aún no puede calcular el gate.
-- **Las excepciones de seguridad se documentan, no se desactivan gates.** `.gitleaks.toml` excluye solo la clave de proyecto de SonarQube, que es un identificador público, y deja activas todas las demás reglas.
-- **Los ambientes son efímeros.** DEV y QA se levantan como contenedores en el runner, se prueban y se destruyen al terminar; en un entorno real vivirían en la nube.
-- **Desarrollo y pruebas son procesos separados.** El proceso que implementa no puede modificar las pruebas que lo validan.
-
-## Evolución natural
-
-Despliegue a producción con estrategias Blue/Green o Canary, firma de artefactos, pruebas de contrato, DAST contra el ambiente de QA, ambientes en la nube y observabilidad.
+La documentación completa de la plataforma está en la [plantilla](https://github.com/JCG097/ai-sdlc-quality-pipeline-demo).
