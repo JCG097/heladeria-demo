@@ -3,27 +3,59 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>heladeria-demo</title>
+  <title>Heladería</title>
   <style>
     :root { --fondo: #f4f5f7; --tinta: #1c1f22; --gris: #5f666d; --acento: #2f5bd3; }
     * { box-sizing: border-box; }
     body {
-      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      margin: 0; min-height: 100vh; display: grid; place-items: start center;
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       background: var(--fondo); color: var(--tinta); line-height: 1.5;
     }
-    main { max-width: 560px; padding: 32px; text-align: center; }
-    h1 { margin: 0 0 8px; font-size: 2rem; }
-    p { margin: 0; color: var(--gris); }
-    .estado { display: inline-block; margin-top: 24px; padding: 6px 12px; border-radius: 999px;
-      background: #e3e9fb; color: var(--acento); font-weight: 600; font-size: 0.9rem; }
+    main { max-width: 720px; width: 100%; padding: 32px; text-align: center; }
+    h1 { margin: 0 0 24px; font-size: 2rem; }
+    .sabores { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .tarjeta-sabor {
+      background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .tarjeta-sabor h2 { margin: 0 0 8px; font-size: 1.2rem; }
+    .tarjeta-sabor .precio { color: var(--acento); font-weight: 600; font-size: 1.1rem; }
   </style>
 </head>
 <body>
   <main>
-    <h1 data-testid="titulo-app">heladeria-demo</h1>
-    <p data-testid="descripcion-app">Proyecto creado con la plantilla DevSecOps con IA. Las funcionalidades llegan con cada historia de usuario.</p>
-    <span class="estado" data-testid="estado-app">Listo para la primera historia</span>
+    <h1 data-testid="titulo-app">Heladería</h1>
+    <ul class="sabores" data-testid="lista-sabores"></ul>
   </main>
+  <script>
+    // Quita tildes y espacios para formar un slug legible en los data-testid (ej. "Maracuyá" -> "maracuya").
+    function slug(nombre) {
+      return nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    function formatearPrecio(precio) {
+      return `$${precio.toLocaleString('es-CO')}`;
+    }
+
+    async function cargarSabores() {
+      const lista = document.querySelector('[data-testid="lista-sabores"]');
+      const res = await fetch('/api/sabores');
+      const sabores = await res.json();
+
+      lista.innerHTML = sabores
+        .map((sabor) => {
+          const id = slug(sabor.nombre);
+          return `
+            <li class="tarjeta-sabor" data-testid="tarjeta-sabor-${id}">
+              <h2 data-testid="nombre-sabor-${id}">${sabor.nombre}</h2>
+              <div class="precio" data-testid="precio-sabor-${id}">${formatearPrecio(sabor.precio)}</div>
+            </li>
+          `;
+        })
+        .join('');
+    }
+
+    cargarSabores();
+  </script>
 </body>
 </html>
