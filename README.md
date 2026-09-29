@@ -1,4 +1,6 @@
-# Plantilla DevSecOps con IA
+# heladeria-demo: pipeline DevSecOps con IA
+
+> Proyecto generado automáticamente desde la plantilla [JCG097/ai-sdlc-quality-pipeline-demo](https://github.com/JCG097/ai-sdlc-quality-pipeline-demo) el 29 de septiembre de 2026, con el autoservicio de proyectos.
 
 Demo de un ciclo de vida de software asistido por IA: una historia de usuario entra como Issue, la IA crea las pruebas y el código, y un pipeline DevSecOps valida cada cambio con quality gates antes de desplegarlo en ambientes efímeros de DEV y QA. Si algo falla, la IA recibe el reporte, corrige y el ciclo se repite.
 
